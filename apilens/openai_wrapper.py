@@ -8,7 +8,7 @@ class OpenAIWrapper(BaseAIWrapper):
     """
     Wraps OpenAI API calls, logs usage, and calculates cost.
     """
-    def __init__(self, model="gpt-3.5-turbo", db_path="apilens.db", user_id=None, tenant_id=None, **kwargs):
+    def __init__(self, model="gpt-3.5-turbo", db_path=None, user_id=None, tenant_id=None, **kwargs):
         if model not in PRICING:
             raise ValueError(f"Unsupported model: {model}. Supported models: {list(PRICING.keys())}")
         if not OPENAI_API_KEY:

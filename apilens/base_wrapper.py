@@ -6,7 +6,6 @@ from .logger import _APILogger
 from .types import LLMResponse, APILensError, RateLimitError, AuthError, BadRequestError
 from .config import PRICING
 import logging
-import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,6 @@ class BaseAIWrapper(ABC):
         self, 
         provider_name: str, 
         model: str, 
-        db_path: str = "apilens.db", 
         user_id: Optional[str] = None, 
         tenant_id: Optional[str] = None,
         max_retries: int = 3,
@@ -32,40 +30,13 @@ class BaseAIWrapper(ABC):
     ):
         self.provider_name = provider_name
         self.model = model
-        self._logger = logger or _APILogger(db_path)
+        self._logger = logger or _APILogger()
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.timeout = timeout
         self.provider_config = kwargs
-        self.db_path = db_path
-        self._init_db()
-
-    def _init_db(self):
-        """Initialize SQLite database for logging."""
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS api_calls
-            (timestamp TEXT, provider TEXT, model TEXT, prompt_tokens INTEGER,
-             completion_tokens INTEGER, cost REAL, user_id TEXT, tenant_id TEXT)
-        ''')
-        conn.commit()
-        conn.close()
-
-    def _log_usage(self, prompt_tokens: int, completion_tokens: int, cost: float):
-        """Log API usage to SQLite database."""
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO api_calls
-            (timestamp, provider, model, prompt_tokens, completion_tokens, cost, user_id, tenant_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (time.strftime('%Y-%m-%d %H:%M:%S'), self.provider_name, self.model,
-              prompt_tokens, completion_tokens, cost, self.user_id, self.tenant_id))
-        conn.commit()
-        conn.close()
 
     def _calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
         """Calculate cost based on token usage."""
@@ -133,10 +104,25 @@ class BaseAIWrapper(ABC):
             formatted = self._format_response(response)
             formatted["usage"] = usage
             formatted["cost"] = cost
-            self._log_usage(usage["prompt_tokens"], usage["completion_tokens"], cost)
+            # Log success
+            self.log_call(
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                cost=cost,
+                status="success",
+                error_message=None
+            )
             return formatted
         except Exception as e:
             logger.error(f"Error in chat_completion: {e}")
+            # Log error
+            self.log_call(
+                prompt_tokens=0,
+                completion_tokens=0,
+                cost=0.0,
+                status="failed",
+                error_message=str(e)
+            )
             raise
 
     async def async_chat_completion(self, messages: List[Dict[str, str]], **kwargs) -> LLMResponse:
@@ -150,7 +136,6 @@ class BaseAIWrapper(ABC):
             formatted = self._format_response(response)
             formatted["usage"] = usage
             formatted["cost"] = cost
-            self._log_usage(usage["prompt_tokens"], usage["completion_tokens"], cost)
             return formatted
         except Exception as e:
             logger.error(f"Error in async_chat_completion: {e}")

@@ -1,96 +1,118 @@
-import sqlite3
-from datetime import datetime
-from .config import DB_PATH
+import os
+import psycopg2
+from psycopg2 import sql
 
 class _APILogger:
-    def __init__(self, db_path=DB_PATH):
-        self.conn = sqlite3.connect(db_path)
+    """
+    Logs API calls into a Postgres database.
+    """
+    def __init__(self, db_url: str = None):
+        # Read and validate the database URL
+        self.db_url = db_url or os.getenv("POSTGRES_DB_URL")
+        if not self.db_url:
+            raise RuntimeError("POSTGRES_DB_URL environment variable is required")
+
+        # Establish connection
+        self.conn = psycopg2.connect(self.db_url)
         self._ensure_table()
 
-    def _format_cost(self, cost):
-        """Format cost as USD currency string."""
-        return f"${cost:.6f}"
+    def _format_cost(self, cost: float) -> str:
+        return f"${cost:.6f}" if cost is not None else None
 
     def _ensure_table(self):
-        self.conn.execute('''
-            CREATE TABLE IF NOT EXISTS api_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                provider TEXT,
-                model TEXT,
-                prompt_tokens INTEGER,
-                completion_tokens INTEGER,
-                cost REAL,
-                formatted_cost TEXT,
-                status TEXT,
-                error_message TEXT,
-                user_id TEXT,
-                tenant_id TEXT
-            )
-        ''')
+        # Create table with proper timestamp type and indexes
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS api_logs (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    provider TEXT,
+                    model TEXT,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    cost REAL,
+                    formatted_cost TEXT,
+                    status TEXT,
+                    error_message TEXT,
+                    user_id TEXT,
+                    tenant_id TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_api_logs_tenant ON api_logs (tenant_id);
+                CREATE INDEX IF NOT EXISTS idx_api_logs_time ON api_logs (timestamp);
+            """)
+            self.conn.commit()
 
-    def log_call(self, call_id=None, provider=None, model=None, prompt_tokens=None, completion_tokens=None, cost=None, status=None, error_message=None, user_id=None, tenant_id=None):
-        formatted_cost = self._format_cost(cost) if cost is not None else None
-        with self.conn:
-            if call_id is None:
-                cursor = self.conn.cursor()
-                cursor.execute('''
-                    INSERT INTO api_logs (timestamp, provider, model, prompt_tokens, completion_tokens, cost, formatted_cost, status, error_message, user_id, tenant_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (datetime.utcnow().isoformat(), provider, model, prompt_tokens, completion_tokens, cost, formatted_cost, status, error_message, user_id, tenant_id))
-                return cursor.lastrowid
-            else:
-                self.conn.execute('''
-                    UPDATE api_logs
-                    SET prompt_tokens = ?, completion_tokens = ?, cost = ?, formatted_cost = ?, status = ?, error_message = ?, user_id = ?, tenant_id = ?
-                    WHERE id = ?
-                ''', (prompt_tokens, completion_tokens, cost, formatted_cost, status, error_message, user_id, tenant_id, call_id))
+    def log_call(
+        self,
+        call_id: int = None,
+        provider: str = None,
+        model: str = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        cost: float = 0.0,
+        status: str = "pending",
+        error_message: str = None,
+        user_id: str = None,
+        tenant_id: str = None,
+    ) -> int:
+        formatted = self._format_cost(cost)
+        try:
+            with self.conn.cursor() as cur:
+                if call_id is None:
+                    cur.execute(
+                        sql.SQL(
+                            """
+                            INSERT INTO api_logs 
+                              (provider, model, prompt_tokens, completion_tokens, cost, formatted_cost, status, error_message, user_id, tenant_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                            """
+                        ),
+                        (provider, model, prompt_tokens, completion_tokens, cost, formatted, status, error_message, user_id, tenant_id)
+                    )
+                    new_id = cur.fetchone()[0]
+                    self.conn.commit()
+                    return new_id
+                else:
+                    cur.execute(
+                        sql.SQL(
+                            """
+                            UPDATE api_logs
+                            SET prompt_tokens      = %s,
+                                completion_tokens  = %s,
+                                cost               = %s,
+                                formatted_cost     = %s,
+                                status             = %s,
+                                error_message      = %s,
+                                user_id            = %s,
+                                tenant_id          = %s
+                            WHERE id = %s
+                            RETURNING id
+                            """
+                        ),
+                        (prompt_tokens, completion_tokens, cost, formatted, status, error_message, user_id, tenant_id, call_id)
+                    )
+                    updated_id = cur.fetchone()[0]
+                    self.conn.commit()
+                    return updated_id
+        except Exception:
+            # In production, you might retry or buffer locally
+            self.conn.rollback()
+            raise
 
-    def get_logs(self, model=None, status=None, provider=None, user_id=None, tenant_id=None):
-        query = "SELECT id, timestamp, provider, model, prompt_tokens, completion_tokens, formatted_cost as cost, status, error_message FROM api_logs"
-        filters = []
-        params = []
-        if model:
-            filters.append("model = ?")
-            params.append(model)
-        if status:
-            filters.append("status = ?")
-            params.append(status)
-        if provider:
-            filters.append("provider = ?")
-            params.append(provider)
-        if user_id:
-            filters.append("user_id = ?")
-            params.append(user_id)
-        if tenant_id:
-            filters.append("tenant_id = ?")
-            params.append(tenant_id)
-        if filters:
-            query += " WHERE " + " AND ".join(filters)
-        query += " ORDER BY timestamp DESC"
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
-        return cursor.fetchall()
+    def close(self):
+        """Explicitly close the DB connection"""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+            self.conn = None
 
-    def get_total_cost(self, model=None, provider=None, user_id=None, tenant_id=None):
-        query = "SELECT SUM(cost) FROM api_logs WHERE status = 'success'"
-        params = []
-        if model:
-            query += " AND model = ?"
-            params.append(model)
-        if provider:
-            query += " AND provider = ?"
-            params.append(provider)
-        if user_id:
-            query += " AND user_id = ?"
-            params.append(user_id)
-        if tenant_id:
-            query += " AND tenant_id = ?"
-            params.append(tenant_id)
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
-        total_cost = cursor.fetchone()[0] or 0.0
-        return self._format_cost(total_cost)
+    def __enter__(self):
+        return self
 
-    def __del__(self):
-        self.conn.close()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+# Usage example:
+# with _APILogger() as logger:
+#     id1 = logger.log_call(provider="openai", model="gpt-4o", prompt_tokens=10, completion_tokens=20, cost=0.001)
+#     logger.log_call(call_id=id1, status="success")

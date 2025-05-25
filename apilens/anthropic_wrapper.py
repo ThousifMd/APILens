@@ -8,7 +8,7 @@ class AnthropicWrapper(BaseAIWrapper):
     """
     Wraps Anthropic API calls, logs usage, and calculates cost.
     """
-    def __init__(self, model="claude-3-opus-20240229", db_path="apilens.db", user_id=None, tenant_id=None, **kwargs):
+    def __init__(self, model="claude-3-opus-20240229", db_path=None, user_id=None, tenant_id=None, **kwargs):
         if model not in PRICING:
             raise ValueError(f"Unsupported model: {model}. Supported models: {list(PRICING.keys())}")
         if not ANTHROPIC_API_KEY:
