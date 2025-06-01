@@ -75,7 +75,7 @@ def main():
         print("Initializing OpenAIWrapper...")
         openai_client = OpenAIWrapper(model="gpt-4")
         print("OpenAIWrapper initialized.")
-        openai_messages = [{"role": "user", "content": "Print the first 20 prime numbers."}]
+        openai_messages = [{"role": "user", "content": "Summarize the key contributions and impact of the GPT-4 model compared to GPT-3.  \nInclude:  \n- Main improvements in architecture or capabilities  \n- Notable use cases or applications  \n- Any known limitations or criticisms  \n- Why it was considered an important step in AI progress\n"}]
         print("Making OpenAI API call...")
         openai_response = openai_client.chat_completion(openai_messages)
         print("OpenAI Response:", openai_response)
@@ -104,7 +104,7 @@ def main():
         print("Initializing GeminiWrapper...")
         gemini_client = GeminiWrapper(model="gemini-2.5-pro-preview-05-06")
         print("GeminiWrapper initialized.")
-        gemini_messages = [{"role": "user", "content": "Print the first 20 prime numbers."}]
+        gemini_messages = [{"role": "user", "content": "Summarize the key contributions and impact of the GPT-4 model compared to GPT-3.  \nInclude:  \n- Main improvements in architecture or capabilities  \n- Notable use cases or applications  \n- Any known limitations or criticisms  \n- Why it was considered an important step in AI progress\n"}]
         print("\nMaking Gemini API call...")
         gemini_response = gemini_client.chat_completion(gemini_messages)
         print("Gemini Response:", gemini_response)
@@ -134,7 +134,7 @@ def main():
         print("AnthropicWrapper initialized.")
         anthropic_messages = [
             {"role": "system", "content": "You are a helpful AI assistant that specializes in explaining complex topics in simple terms."},
-            {"role": "user", "content": "Print the first 20 prime numbers."}
+            {"role": "user", "content": "Summarize the key contributions and impact of the GPT-4 model compared to GPT-3.  \nInclude:  \n- Main improvements in architecture or capabilities  \n- Notable use cases or applications  \n- Any known limitations or criticisms  \n- Why it was considered an important step in AI progress\n"}
         ]
         print("\nMaking Anthropic (Claude) API call...")
         anthropic_response = anthropic_client.chat_completion(

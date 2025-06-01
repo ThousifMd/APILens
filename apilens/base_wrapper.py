@@ -6,6 +6,9 @@ from .logger import _APILogger
 from .types import LLMResponse, APILensError, RateLimitError, AuthError, BadRequestError
 from .config import PRICING
 import logging
+from apilens.rest_logger import APILoggerREST
+import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +28,12 @@ class BaseAIWrapper(ABC):
         max_retries: int = 3,
         backoff_base: float = 2.0,
         timeout: int = 30,
-        logger: Optional[_APILogger] = None,
+        logger: Optional[object] = None,
         **kwargs
     ):
         self.provider_name = provider_name
         self.model = model
-        self._logger = logger or _APILogger()
+        self._logger = APILoggerREST(os.getenv("LOG_API_URL", "http://localhost:8000/log"))
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.max_retries = max_retries
