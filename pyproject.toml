@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.poetry]
 name = "apilens-test1"
-version = "0.1.2"
+version = "0.1.3"
 description = "A Python SDK for tracking and optimizing AI-model API usage"
 authors = ["Your Name <thousifxudayagiri@gmail.com>"]
 readme = "README.md"
