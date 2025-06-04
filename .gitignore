@@ -21,8 +21,10 @@ wheels/
 *.egg
 
 # Virtual Environment
-venv/
+.env
+.venv
 env/
+venv/
 ENV/
 
 # IDE
@@ -31,12 +33,18 @@ ENV/
 *.swp
 *.swo
 
-# Database
-*.db
-*.sqlite3
-
-# Logs
+# Logs and databases
 *.log
+*.sqlite3
+results/
+
+# Test files
+test_*.py
+!test_wrappers.py
+
+# Local configuration
+.env
+.env.local
 
 # OS
 .DS_Store
